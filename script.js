@@ -26,13 +26,18 @@ document.addEventListener('DOMContentLoaded', () => {
         "Уголовный кодекс": [],
         "Административный + Дорожный кодексы": [],
         "Законы": [],
-        "Процессуальный кодекс": []
+        "Процессуальный кодекс": [],
+        "Устав LSCSD": []
     };
 
     // Group questions by category
     quizData.forEach((item, index) => {
+        // If question already has a category assigned, use it
+        if (item.category && item.category === "Устав LSCSD") {
+            categories["Устав LSCSD"].push({item, index});
+        }
         // Categorize questions based on content
-        if (item.question.includes("УК") || item.answer.includes("УК") || 
+        else if (item.question.includes("УК") || item.answer.includes("УК") || 
             item.question.toLowerCase().includes("статья") || 
             item.question.toLowerCase().includes("гражданин") || 
             item.question.toLowerCase().includes("преступление")) {
