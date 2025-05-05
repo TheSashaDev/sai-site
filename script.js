@@ -9,6 +9,51 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressBarEl = document.getElementById('progress-bar');
     const themeToggleBtn = document.getElementById('theme-toggle');
     
+    // Create timer element
+    const timerEl = document.createElement('div');
+    timerEl.id = 'exam-timer';
+    timerEl.className = 'exam-timer';
+    timerEl.innerHTML = '<i class="bi bi-stopwatch"></i> Время: 00:00';
+    
+    // Insert before the progress indicator
+    progressIndicatorEl.parentNode.insertBefore(timerEl, progressIndicatorEl);
+    
+    // Set up timer variables
+    let timerInterval;
+    let timerSeconds = 0;
+    let timerStarted = false;
+    
+    // Function to format time
+    const formatTime = (seconds) => {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    };
+    
+    // Function to start timer
+    const startTimer = () => {
+        if (!timerStarted) {
+            timerStarted = true;
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                timerEl.innerHTML = `<i class="bi bi-stopwatch"></i> Время: ${formatTime(timerSeconds)}`;
+            }, 1000);
+        }
+    };
+    
+    // Create elements to track required vs optional questions
+    const requiredProgressEl = document.createElement('div');
+    requiredProgressEl.id = 'required-progress';
+    requiredProgressEl.className = 'progress-detail';
+    
+    const optionalProgressEl = document.createElement('div');
+    optionalProgressEl.id = 'optional-progress';
+    optionalProgressEl.className = 'progress-detail';
+    
+    // Insert after progress indicator
+    progressIndicatorEl.insertAdjacentElement('afterend', requiredProgressEl);
+    requiredProgressEl.insertAdjacentElement('afterend', optionalProgressEl);
+    
     // Test action buttons
     const markAllCorrectBtn = document.getElementById('mark-all-correct');
     const randomizeAnswersBtn = document.getElementById('randomize-answers');
@@ -67,7 +112,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const totalQuestions = quizData.length;
-    scoreTotalEl.textContent = totalQuestions; // Set total score possible (1 point per question max)
+    
+    // Calculate maximum possible score based on required questions
+    let maxPossibleScore = 0;
+    quizData.forEach(item => {
+        maxPossibleScore += (item.status === "Обязательно") ? 1.5 : 1;
+    });
+    
+    scoreTotalEl.textContent = maxPossibleScore.toFixed(1); // Set total score possible with new scoring system
     progressIndicatorEl.textContent = `Отвечено: 0 / ${totalQuestions}`;
 
     // Theme Toggle Functionality
@@ -161,6 +213,45 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Create filter for optional questions
+    const filterContainer = document.createElement('div');
+    filterContainer.classList.add('filter-container');
+    filterContainer.innerHTML = `
+        <div class="filter-option">
+            <input type="checkbox" id="show-optional-questions" checked>
+            <label for="show-optional-questions">Показывать необязательные вопросы</label>
+        </div>
+    `;
+    
+    // Insert filter before the category navigation
+    const categoryNav = document.getElementById('category-nav');
+    categoryNav.parentNode.insertBefore(filterContainer, categoryNav);
+    
+    // Add event listener for optional questions toggle
+    const showOptionalCheckbox = document.getElementById('show-optional-questions');
+    showOptionalCheckbox.addEventListener('change', () => {
+        const showOptional = showOptionalCheckbox.checked;
+        toggleOptionalQuestions(!showOptional);
+        
+        // Show notification
+        const notif = document.createElement('div');
+        notif.className = 'filter-notification';
+        notif.textContent = showOptional ? 
+            'Показаны все вопросы' : 
+            'Показаны только обязательные вопросы';
+        document.body.appendChild(notif);
+        
+        setTimeout(() => {
+            notif.classList.add('show');
+            setTimeout(() => {
+                notif.classList.remove('show');
+                setTimeout(() => {
+                    notif.remove();
+                }, 300);
+            }, 2000);
+        }, 10);
+    });
+
     // Function to create question item
     function createQuestionItem(item, qNumber) {
         // Create main container for the question
@@ -207,8 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
         optionsContainer.classList.add('assessment-options');
 
         const options = [
-            { value: 'correct', label: '= Правильно' },
-            { value: 'partial', label: '- Частично правильно' },
+            { value: 'correct', label: 'Правильно' },
+            { value: 'partial', label: 'Частично правильно' },
             { value: 'not_asked', label: 'Не спрашивал' },
             { value: 'incorrect', label: 'Не правильно' }
         ];
@@ -292,14 +383,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Add score as part of the code
         const score = calculateScore(answers);
-        const percentage = totalQuestions > 0 ? ((score / totalQuestions) * 100).toFixed(0) : 0;
+        const percentage = totalQuestions > 0 ? ((score / maxPossibleScore) * 100).toFixed(0) : 0;
         
         // Create base64 encoded string
         let codeData = {
             a: answerString,
             s: score,
             p: percentage,
-            t: new Date().toISOString()
+            t: new Date().toISOString(),
+            examTime: timerSeconds // Add exam time in seconds
         };
         
         return btoa(JSON.stringify(codeData));
@@ -336,7 +428,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 answers,
                 score: decoded.s,
                 percentage: decoded.p,
-                timestamp: new Date(decoded.t)
+                timestamp: new Date(decoded.t),
+                examTime: decoded.examTime || 0
             };
         } catch (error) {
             console.error('Failed to parse code:', error);
@@ -457,13 +550,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 resultCodeEl.value = code;
                 resultCode = code;
                 
+                // Set timer to the loaded time
+                if (result.examTime) {
+                    timerSeconds = result.examTime;
+                    timerEl.innerHTML = `<i class="bi bi-stopwatch"></i> Время: ${formatTime(timerSeconds)}`;
+                    timerStarted = true;
+                }
+                
                 // Show when this test was taken
                 const infoElement = document.createElement('div');
                 infoElement.classList.add('loaded-code-info');
                 infoElement.innerHTML = `
                     <div><strong>Загружен результат</strong></div>
                     <div>Дата теста: ${formattedDate}</div>
-                    <div>Оценка: ${result.score} / ${totalQuestions} (${result.percentage}%)</div>
+                    <div>Оценка: ${result.score} / ${maxPossibleScore.toFixed(1)} (${result.percentage}%)</div>
+                    <div>Время: ${formatTime(result.examTime || 0)}</div>
                 `;
                 
                 // Remove previous info if exists
@@ -505,12 +606,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedValue = answers[`q${i}`];
             
             if (selectedValue) {
+                // Find the question item to check if it's required
+                const questionItem = document.querySelector(`.question-item[data-question-id="${i}"]`);
+                const isRequired = questionItem && questionItem.querySelector('.status-required') !== null;
+                
+                // Base multiplier - 1 for non-required, 1.5 for required questions
+                const multiplier = isRequired ? 1.5 : 1;
+                
                 switch (selectedValue) {
                     case 'correct':
-                        score += 1;
+                        score += 1 * multiplier;
                         break;
                     case 'partial':
-                        score += 0.5;
+                        score += 0.5 * multiplier;
                         break;
                     // 'not_asked' and 'incorrect' get 0 points
                 }
@@ -522,66 +630,145 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const calculateAndUpdateScore = () => {
         let answeredQuestions = 0;
+        let answeredRequired = 0;
+        let answeredOptional = 0;
+        let totalRequired = 0;
+        let totalOptional = 0;
+        let visibleQuestions = 0;
         currentAnswers = {};
+
+        // Count total required and optional questions
+        quizData.forEach(item => {
+            if (item.status === "Обязательно") {
+                totalRequired++;
+            } else {
+                totalOptional++;
+            }
+        });
 
         for (let i = 1; i <= totalQuestions; i++) {
             // Query within the form for the checked radio in the group
             const selectedOption = quizForm.querySelector(`input[name="q${i}"]:checked`);
+            const questionItem = document.querySelector(`.question-item[data-question-id="${i}"]`);
+            const isRequired = questionItem && questionItem.querySelector('.status-required') !== null;
+            const isVisible = questionItem && questionItem.style.display !== 'none';
+            
+            // Count visible questions for progress indicator
+            if (isVisible) {
+                visibleQuestions++;
+            }
 
             if (selectedOption) {
-                answeredQuestions++;
                 currentAnswers[`q${i}`] = selectedOption.value;
+                
+                // Only count answered questions that are visible
+                if (isVisible) {
+                    answeredQuestions++;
+                }
+                
+                // Track required vs optional answered questions
+                if (isRequired) {
+                    answeredRequired++;
+                } else {
+                    answeredOptional++;
+                }
             }
         }
 
         const score = calculateScore(currentAnswers);
-        const percentage = totalQuestions > 0 ? ((score / totalQuestions) * 100) : 0;
-        const progressPercentage = totalQuestions > 0 ? ((answeredQuestions / totalQuestions) * 100) : 0;
+        const percentage = totalQuestions > 0 ? ((score / maxPossibleScore) * 100) : 0;
+        const progressPercentage = visibleQuestions > 0 ? 
+            ((answeredQuestions / visibleQuestions) * 100) : 0;
 
         // Update Score Display
-        scoreValueEl.textContent = score;
+        scoreValueEl.textContent = score.toFixed(1);
         scorePercentageEl.textContent = `${percentage.toFixed(1)}%`;
         
         // Update progress bar
         progressBarEl.style.width = `${progressPercentage}%`;
 
-        // Update Progress Indicator
-        progressIndicatorEl.textContent = `Отвечено: ${answeredQuestions} / ${totalQuestions}`;
-
-        // Update Pass/Fail Status (Optional: Only show when all answered)
-        if (answeredQuestions === totalQuestions) {
-             const passThreshold = 70; // Example threshold 70%
-             if (percentage >= passThreshold) {
-                 passFailStatusEl.textContent = 'Результат: Сдал';
-                 passFailStatusEl.className = 'pass'; // Use class for styling
-                 
-                 // Add celebration animation
-                 scoreBoard.classList.add('pass-celebration');
-                 setTimeout(() => {
-                     scoreBoard.classList.remove('pass-celebration');
-                 }, 1500);
-             } else {
-                 passFailStatusEl.textContent = 'Результат: Не сдал';
-                 passFailStatusEl.className = 'fail'; // Use class for styling
-             }
+        // Get the show optional checkbox state 
+        const showOptional = document.getElementById('show-optional-questions').checked;
+        
+        // Update Progress Indicator - adjust based on filter
+        const displayedTotal = !showOptional ? totalRequired : totalQuestions;
+        const displayedAnswered = !showOptional ? answeredRequired : answeredQuestions;
+        progressIndicatorEl.textContent = `Отвечено: ${displayedAnswered} / ${displayedTotal}`;
+        
+        // Update required vs optional progress
+        requiredProgressEl.textContent = `Обязательные: ${answeredRequired} / ${totalRequired}`;
+        requiredProgressEl.className = 'progress-detail required-progress';
+        
+        optionalProgressEl.textContent = `Не обязательные: ${answeredOptional} / ${totalOptional}`;
+        optionalProgressEl.className = 'progress-detail optional-progress';
+        
+        // Make optional progress invisible if only showing required questions
+        if (!showOptional) {
+            optionalProgressEl.style.display = 'none';
         } else {
-            passFailStatusEl.textContent = 'Завершите тест для итогового результата'; // Placeholder
-            passFailStatusEl.className = ''; // Remove pass/fail class
+            optionalProgressEl.style.display = 'inline-block';
+        }
+
+        // Update Pass/Fail Status in real-time based on the current percentage
+        const passThreshold = 70; // Example threshold 70%
+        if (percentage >= passThreshold) {
+            passFailStatusEl.textContent = 'Результат: Сдал';
+            passFailStatusEl.className = 'pass'; // Use class for styling
+            
+            // Add celebration animation when passing
+            if (!scoreBoard.classList.contains('pass-celebration') && answeredQuestions > 5) {
+                scoreBoard.classList.add('pass-celebration');
+                setTimeout(() => {
+                    scoreBoard.classList.remove('pass-celebration');
+                }, 1500);
+            }
+        } else {
+            passFailStatusEl.textContent = 'Результат: Не сдал';
+            passFailStatusEl.className = 'fail'; // Use class for styling
+        }
+
+        // Show actual count of answered questions for better context
+        if (!showOptional) {
+            // Show remaining required questions
+            if (answeredRequired < totalRequired) {
+                const remaining = totalRequired - answeredRequired;
+                passFailStatusEl.textContent += ` (осталось ${remaining} обязательных ${getWordForm(remaining, 'вопрос', 'вопроса', 'вопросов')})`;
+            }
+        } else {
+            // Show all remaining questions
+            if (answeredQuestions < totalQuestions) {
+                const remaining = totalQuestions - answeredQuestions;
+                passFailStatusEl.textContent += ` (осталось ${remaining} ${getWordForm(remaining, 'вопрос', 'вопроса', 'вопросов')})`;
+            }
         }
         
         // Generate and update result code
         resultCode = generateResultCode(currentAnswers);
         resultCodeEl.value = resultCode;
         
-        // Show the share container if we have answers
+        // Show the share container and print button if we have answers
         if (answeredQuestions > 0) {
             shareResultContainer.classList.add('visible');
             shareButton.classList.add('active');
+            printReportBtn.style.display = 'block';
         }
     };
 
+    // Helper function for proper word form based on number
+    function getWordForm(number, form1, form2, form5) {
+        let n = Math.abs(number) % 100;
+        let n1 = n % 10;
+        if (n > 10 && n < 20) return form5;
+        if (n1 > 1 && n1 < 5) return form2;
+        if (n1 == 1) return form1;
+        return form5;
+    }
+
     // --- Event Listener for Changes ---
     quizForm.addEventListener('change', (event) => {
+        // Start timer on first change
+        startTimer();
+        
         // Check if the changed element is a radio button within our form
         if (event.target.type === 'radio' && event.target.name.startsWith('q')) {
             // Add visual feedback when a radio is selected
@@ -937,9 +1124,629 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
             
+            // Apply filter if only showing required questions
+            const showOptionalCheckbox = document.getElementById('show-optional-questions');
+            if (!showOptionalCheckbox.checked) {
+                toggleOptionalQuestions(true);
+            }
+            
             // Scroll to the top of the form
             quizForm.scrollIntoView({ behavior: 'smooth' });
         });
+    });
+
+    // Add a button to highlight unanswered questions
+    const highlightUnansweredBtn = document.createElement('button');
+    highlightUnansweredBtn.id = 'highlight-unanswered';
+    highlightUnansweredBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Показать неотвеченные вопросы';
+    highlightUnansweredBtn.className = 'action-button';
+    
+    // Add the highlight unanswered button after the scoreBoard
+    scoreBoard.insertAdjacentElement('afterend', highlightUnansweredBtn);
+    
+    // Function to toggle optional questions
+    const toggleOptionalQuestions = (showOnlyRequired) => {
+        const questionItems = document.querySelectorAll('.question-item');
+        questionItems.forEach(item => {
+            const isRequired = item.querySelector('.status-required') !== null;
+            if (!isRequired && showOnlyRequired) {
+                item.style.display = 'none';
+            } else {
+                item.style.display = 'block';
+            }
+        });
+        
+        // Update the counts of visible questions
+        updateVisibleQuestionsCounts();
+    };
+    
+    // Function to update the visible questions count
+    const updateVisibleQuestionsCounts = () => {
+        const categoryContainers = document.querySelectorAll('.category-container');
+        categoryContainers.forEach(container => {
+            const categoryHeader = container.querySelector('.category-header');
+            const categoryCountSpan = categoryHeader.querySelector('.category-count');
+            const allQuestions = container.querySelectorAll('.question-item');
+            const visibleQuestions = Array.from(allQuestions).filter(q => q.style.display !== 'none');
+            
+            categoryCountSpan.textContent = `${visibleQuestions.length} вопросов`;
+        });
+    };
+    
+    // Add event listener to highlight unanswered questions
+    highlightUnansweredBtn.addEventListener('click', () => {
+        // Add button animation
+        highlightUnansweredBtn.classList.add('button-clicked');
+        setTimeout(() => {
+            highlightUnansweredBtn.classList.remove('button-clicked');
+        }, 300);
+        
+        const unansweredQuestions = [];
+        
+        // Find all unanswered questions that are currently visible
+        for (let i = 1; i <= totalQuestions; i++) {
+            const selectedOption = quizForm.querySelector(`input[name="q${i}"]:checked`);
+            if (!selectedOption) {
+                const questionItem = document.querySelector(`.question-item[data-question-id="${i}"]`);
+                if (questionItem && questionItem.style.display !== 'none') {
+                    unansweredQuestions.push(questionItem);
+                    
+                    // Highlight the unanswered question
+                    questionItem.classList.add('unanswered-highlight');
+                    setTimeout(() => {
+                        questionItem.classList.remove('unanswered-highlight');
+                    }, 5000); // Remove highlight after 5 seconds
+                }
+            }
+        }
+        
+        // If there are unanswered questions, scroll to the first one
+        if (unansweredQuestions.length > 0) {
+            // Find the first unanswered required question, or just the first unanswered question
+            const firstRequiredUnanswered = unansweredQuestions.find(q => 
+                q.querySelector('.status-required') !== null
+            ) || unansweredQuestions[0];
+            
+            firstRequiredUnanswered.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Show a count of unanswered questions
+            alert(`Осталось ответить на ${unansweredQuestions.length} ${getWordForm(unansweredQuestions.length, 'вопрос', 'вопроса', 'вопросов')}`);
+        } else {
+            alert('Все вопросы отвечены!');
+        }
+    });
+
+    // Add print report button
+    const printReportBtn = document.createElement('button');
+    printReportBtn.id = 'print-report';
+    printReportBtn.innerHTML = '<i class="bi bi-printer"></i> Распечатать результаты';
+    printReportBtn.className = 'action-button print-report-btn';
+    printReportBtn.style.display = 'none'; // Initially hidden
+    
+    // Add after the share container
+    shareResultContainer.insertAdjacentElement('afterend', printReportBtn);
+    
+    // Function to generate printable report
+    const generatePrintableReport = () => {
+        const answeredQuestions = Object.keys(currentAnswers).length;
+        
+        if (answeredQuestions === 0) {
+            alert('Сначала ответьте на вопросы!');
+            return;
+        }
+        
+        // Count by category & status
+        const categoryCounts = {};
+        const statusCounts = {
+            'correct': 0,
+            'partial': 0,
+            'not_asked': 0,
+            'incorrect': 0,
+            'unanswered': 0
+        };
+        
+        // Create detailed report
+        let reportContent = `
+            <div class="print-report">
+                <h1>Протокол экзамена SAI</h1>
+                <div class="report-meta">
+                    <p><strong>Дата:</strong> ${new Date().toLocaleDateString()}</p>
+                    <p><strong>Время:</strong> ${formatTime(timerSeconds)}</p>
+                </div>
+                
+                <div class="report-summary">
+                    <h2>Итоговый результат</h2>
+                    <p class="report-score">Оценка: ${scoreValueEl.textContent} из ${maxPossibleScore.toFixed(1)} (${scorePercentageEl.textContent})</p>
+                    <p class="report-status ${passFailStatusEl.className}">Результат: ${passFailStatusEl.textContent.split('(')[0].trim()}</p>
+                </div>
+                
+                <h2>Детализация по вопросам</h2>
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Категория</th>
+                            <th>Вопрос</th>
+                            <th>Статус</th>
+                            <th>Ответ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        // Process each question
+        for (let i = 1; i <= totalQuestions; i++) {
+            const questionData = quizData[i-1];
+            const selectedValue = currentAnswers[`q${i}`];
+            
+            if (!categoryCounts[questionData.category]) {
+                categoryCounts[questionData.category] = {
+                    total: 0,
+                    correct: 0,
+                    partial: 0,
+                    not_asked: 0,
+                    incorrect: 0,
+                    unanswered: 0
+                };
+            }
+            
+            categoryCounts[questionData.category].total++;
+            
+            let answerText;
+            let rowClass = '';
+            
+            if (selectedValue) {
+                switch (selectedValue) {
+                    case 'correct':
+                        answerText = 'Правильно';
+                        statusCounts.correct++;
+                        categoryCounts[questionData.category].correct++;
+                        rowClass = 'correct-row';
+                        break;
+                    case 'partial':
+                        answerText = 'Частично правильно';
+                        statusCounts.partial++;
+                        categoryCounts[questionData.category].partial++;
+                        rowClass = 'partial-row';
+                        break;
+                    case 'not_asked':
+                        answerText = 'Не спрашивал';
+                        statusCounts.not_asked++;
+                        categoryCounts[questionData.category].not_asked++;
+                        rowClass = 'not-asked-row';
+                        break;
+                    case 'incorrect':
+                        answerText = 'Не правильно';
+                        statusCounts.incorrect++;
+                        categoryCounts[questionData.category].incorrect++;
+                        rowClass = 'incorrect-row';
+                        break;
+                }
+            } else {
+                answerText = 'Не отвечено';
+                statusCounts.unanswered++;
+                categoryCounts[questionData.category].unanswered++;
+                rowClass = 'unanswered-row';
+            }
+            
+            // Add row for each question
+            reportContent += `
+                <tr class="${rowClass}">
+                    <td>${i}</td>
+                    <td>${questionData.category}</td>
+                    <td>${questionData.question} ${questionData.status === "Обязательно" ? '<span class="required-badge">Обязательно</span>' : ''}</td>
+                    <td>${answerText}</td>
+                    <td>${questionData.answer}</td>
+                </tr>
+            `;
+        }
+        
+        reportContent += `
+                    </tbody>
+                </table>
+                
+                <h2>Статистика по категориям</h2>
+                <table class="report-table category-stats">
+                    <thead>
+                        <tr>
+                            <th>Категория</th>
+                            <th>Всего</th>
+                            <th>Правильно</th>
+                            <th>Частично</th>
+                            <th>Не спрашивал</th>
+                            <th>Не правильно</th>
+                            <th>Не отвечено</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        // Add rows for category statistics
+        Object.keys(categoryCounts).forEach(category => {
+            const stats = categoryCounts[category];
+            reportContent += `
+                <tr>
+                    <td>${category}</td>
+                    <td>${stats.total}</td>
+                    <td class="correct-cell">${stats.correct}</td>
+                    <td class="partial-cell">${stats.partial}</td>
+                    <td class="not-asked-cell">${stats.not_asked}</td>
+                    <td class="incorrect-cell">${stats.incorrect}</td>
+                    <td class="unanswered-cell">${stats.unanswered}</td>
+                </tr>
+            `;
+        });
+        
+        // Add total stats row
+        reportContent += `
+                <tr class="total-row">
+                    <td><strong>ИТОГО</strong></td>
+                    <td>${totalQuestions}</td>
+                    <td class="correct-cell">${statusCounts.correct}</td>
+                    <td class="partial-cell">${statusCounts.partial}</td>
+                    <td class="not-asked-cell">${statusCounts.not_asked}</td>
+                    <td class="incorrect-cell">${statusCounts.incorrect}</td>
+                    <td class="unanswered-cell">${statusCounts.unanswered}</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="report-footer">
+            <p>Экзамен для SAI - Тест сгенерирован системой</p>
+            <p>Код результата: ${resultCode}</p>
+        </div>
+    </div>`;
+        
+        // Create print window
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Протокол экзамена SAI</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 20px;
+                    }
+                    
+                    .print-report {
+                        max-width: 900px;
+                        margin: 0 auto;
+                    }
+                    
+                    h1, h2 {
+                        color: #333;
+                    }
+                    
+                    .report-meta {
+                        margin-bottom: 20px;
+                    }
+                    
+                    .report-summary {
+                        background-color: #f5f5f5;
+                        padding: 15px;
+                        border-radius: 5px;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .report-score {
+                        font-size: 18px;
+                        font-weight: bold;
+                    }
+                    
+                    .report-status {
+                        font-size: 20px;
+                        font-weight: bold;
+                    }
+                    
+                    .pass {
+                        color: #00c853;
+                    }
+                    
+                    .fail {
+                        color: #d81b60;
+                    }
+                    
+                    .report-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 30px;
+                    }
+                    
+                    .report-table th, .report-table td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    
+                    .report-table th {
+                        background-color: #f2f2f2;
+                    }
+                    
+                    .report-table tr:nth-child(even) {
+                        background-color: #f9f9f9;
+                    }
+                    
+                    .correct-row {
+                        background-color: rgba(0, 200, 83, 0.1) !important;
+                    }
+                    
+                    .partial-row {
+                        background-color: rgba(255, 152, 0, 0.1) !important;
+                    }
+                    
+                    .incorrect-row {
+                        background-color: rgba(216, 27, 96, 0.1) !important;
+                    }
+                    
+                    .unanswered-row {
+                        background-color: rgba(158, 158, 158, 0.1) !important;
+                    }
+                    
+                    .correct-cell {
+                        color: #00c853;
+                        font-weight: bold;
+                    }
+                    
+                    .partial-cell {
+                        color: #ff9800;
+                        font-weight: bold;
+                    }
+                    
+                    .incorrect-cell {
+                        color: #d81b60;
+                        font-weight: bold;
+                    }
+                    
+                    .not-asked-cell {
+                        color: #607d8b;
+                        font-weight: bold;
+                    }
+                    
+                    .unanswered-cell {
+                        color: #9e9e9e;
+                        font-weight: bold;
+                    }
+                    
+                    .total-row {
+                        background-color: #f2f2f2 !important;
+                    }
+                    
+                    .required-badge {
+                        background-color: #d81b60;
+                        color: white;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        font-size: 12px;
+                        margin-left: 8px;
+                    }
+                    
+                    .report-footer {
+                        margin-top: 30px;
+                        border-top: 1px solid #ddd;
+                        padding-top: 15px;
+                        font-size: 12px;
+                        color: #777;
+                    }
+                    
+                    @media print {
+                        body {
+                            margin: 0;
+                            padding: 15px;
+                        }
+                        
+                        .print-report {
+                            width: 100%;
+                            max-width: 100%;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                ${reportContent}
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    }
+                </script>
+            </body>
+            </html>
+        `);
+    };
+    
+    // Add click event for print report button
+    printReportBtn.addEventListener('click', generatePrintableReport);
+
+    // Create autosave toggle button
+    const autoSaveToggle = document.createElement('div');
+    autoSaveToggle.id = 'autosave-toggle';
+    autoSaveToggle.className = 'toggle-switch';
+    autoSaveToggle.innerHTML = `
+        <label>
+            <input type="checkbox" id="autosave-checkbox" checked>
+            <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">Автосохранение</span>
+    `;
+    
+    // Insert before the highlight unanswered button
+    highlightUnansweredBtn.insertAdjacentElement('beforebegin', autoSaveToggle);
+    
+    const autosaveCheckbox = document.getElementById('autosave-checkbox');
+    let autoSaveEnabled = true; // Default to true
+    
+    // Try to load autosave preference from localStorage
+    if (localStorage.getItem('sai_autosave_pref') !== null) {
+        autoSaveEnabled = localStorage.getItem('sai_autosave_pref') === 'true';
+        autosaveCheckbox.checked = autoSaveEnabled;
+    }
+    
+    // Save autosave preference when changed
+    autosaveCheckbox.addEventListener('change', () => {
+        autoSaveEnabled = autosaveCheckbox.checked;
+        localStorage.setItem('sai_autosave_pref', autoSaveEnabled);
+        
+        // Show notification
+        const notif = document.createElement('div');
+        notif.className = 'auto-save-notification';
+        notif.textContent = autoSaveEnabled ? 'Автосохранение включено' : 'Автосохранение выключено';
+        document.body.appendChild(notif);
+        
+        setTimeout(() => {
+            notif.classList.add('show');
+            setTimeout(() => {
+                notif.classList.remove('show');
+                setTimeout(() => {
+                    notif.remove();
+                }, 300);
+            }, 2000);
+        }, 10);
+    });
+    
+    // Function to save progress to localStorage
+    const saveProgress = () => {
+        if (!autoSaveEnabled) return;
+        
+        const saveData = {
+            answers: currentAnswers,
+            timer: timerSeconds,
+            timestamp: new Date().toISOString(),
+            requiredOnly: !document.getElementById('show-optional-questions').checked // Save filter state
+        };
+        
+        localStorage.setItem('sai_exam_progress', JSON.stringify(saveData));
+        
+        // Update autosave indicator with timestamp
+        const now = new Date();
+        const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        document.querySelector('.toggle-label').textContent = `Автосохранение (${timeString})`;
+    };
+    
+    // Automatically save progress every 30 seconds and when answers change
+    setInterval(saveProgress, 30000);
+    
+    // Load saved progress if available
+    const loadSavedProgress = () => {
+        // Skip if we have a code parameter in the URL
+        if (codeParam) return;
+        
+        const savedData = localStorage.getItem('sai_exam_progress');
+        if (savedData) {
+            try {
+                const data = JSON.parse(savedData);
+                
+                // Check if saved data is recent (less than 24 hours old)
+                const savedTime = new Date(data.timestamp);
+                const now = new Date();
+                const hoursDiff = (now - savedTime) / (1000 * 60 * 60);
+                
+                if (hoursDiff < 24) {
+                    // Restore answers
+                    if (data.answers) {
+                        applyAnswersFromCode(data.answers);
+                        currentAnswers = data.answers;
+                    }
+                    
+                    // Restore timer
+                    if (data.timer) {
+                        timerSeconds = data.timer;
+                        timerEl.innerHTML = `<i class="bi bi-stopwatch"></i> Время: ${formatTime(timerSeconds)}`;
+                    }
+                    
+                    // Restore required-only filter state
+                    if (data.requiredOnly !== undefined) {
+                        const showOptionalCheckbox = document.getElementById('show-optional-questions');
+                        showOptionalCheckbox.checked = !data.requiredOnly;
+                        toggleOptionalQuestions(data.requiredOnly);
+                    }
+                    
+                    // Ask if user wants to continue from saved progress
+                    const continueFromSave = confirm(`Найден сохраненный прогресс от ${new Date(data.timestamp).toLocaleString()}. Продолжить с сохраненного места?`);
+                    
+                    if (continueFromSave) {
+                        // Start timer
+                        startTimer();
+                        
+                        // Apply the restored answers
+                        calculateAndUpdateScore();
+                    } else {
+                        // Clear saved progress
+                        localStorage.removeItem('sai_exam_progress');
+                        
+                        // Reset form
+                        quizForm.reset();
+                        
+                        // Reset timer
+                        timerSeconds = 0;
+                        timerEl.innerHTML = `<i class="bi bi-stopwatch"></i> Время: 00:00`;
+                        timerStarted = false;
+                        
+                        // Reset required-only filter
+                        const showOptionalCheckbox = document.getElementById('show-optional-questions');
+                        showOptionalCheckbox.checked = true;
+                        toggleOptionalQuestions(false);
+                        
+                        // Reset score
+                        calculateAndUpdateScore();
+                    }
+                } else {
+                    // Data is too old, remove it
+                    localStorage.removeItem('sai_exam_progress');
+                }
+            } catch (error) {
+                console.error('Failed to parse saved progress', error);
+                localStorage.removeItem('sai_exam_progress');
+            }
+        }
+    };
+    
+    // Try to load saved progress
+    loadSavedProgress();
+    
+    // Update calculateAndUpdateScore to save progress
+    const originalCalculateAndUpdateScore = calculateAndUpdateScore;
+    calculateAndUpdateScore = function() {
+        originalCalculateAndUpdateScore.apply(this, arguments);
+        saveProgress();
+    };
+    
+    // Add a clear progress button
+    const clearProgressBtn = document.createElement('button');
+    clearProgressBtn.id = 'clear-progress';
+    clearProgressBtn.innerHTML = '<i class="bi bi-trash"></i> Сбросить прогресс';
+    clearProgressBtn.className = 'action-button clear-progress-btn';
+    
+    // Add after the highlight unanswered button
+    highlightUnansweredBtn.insertAdjacentElement('afterend', clearProgressBtn);
+    
+    // Add click event for clear progress button
+    clearProgressBtn.addEventListener('click', () => {
+        if (confirm('Вы уверены, что хотите сбросить весь прогресс? Это действие нельзя отменить.')) {
+            // Clear localStorage
+            localStorage.removeItem('sai_exam_progress');
+            
+            // Reset form
+            quizForm.reset();
+            
+            // Reset timer
+            timerSeconds = 0;
+            timerEl.innerHTML = `<i class="bi bi-stopwatch"></i> Время: 00:00`;
+            timerStarted = false;
+            
+            // Reset current answers
+            currentAnswers = {};
+            
+            // Reset required-only filter
+            const showOptionalCheckbox = document.getElementById('show-optional-questions');
+            showOptionalCheckbox.checked = true;
+            toggleOptionalQuestions(false);
+            
+            // Reset score
+            calculateAndUpdateScore();
+            
+            // Show confirmation
+            alert('Прогресс сброшен!');
+        }
     });
 
 });
