@@ -36,6 +36,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (item.category && item.category === "Устав LSCSD") {
             categories["Устав LSCSD"].push({item, index});
         }
+        // Skip placeholder questions
+        else if (item.question === "Упразднено" && item.answer === "Упразднено") {
+            // Skip this item
+        }
         // Categorize questions based on content
         else if (item.question.includes("УК") || item.answer.includes("УК") || 
             item.question.toLowerCase().includes("статья") || 
@@ -66,7 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    const totalQuestions = quizData.length;
+    // Calculate total questions excluding placeholders
+    const totalQuestions = quizData.filter(item => !(item.question === "Упразднено" && item.answer === "Упразднено")).length;
     scoreTotalEl.textContent = totalQuestions; // Set total score possible (1 point per question max)
     progressIndicatorEl.textContent = `Отвечено: 0 / ${totalQuestions}`;
 
@@ -151,18 +156,26 @@ document.addEventListener('DOMContentLoaded', () => {
             // Create the question item
             const questionItem = createQuestionItem(item, qNumber);
             
-            // Add entrance animation with delay based on index
-            setTimeout(() => {
-                questionItem.style.opacity = '1';
-                questionItem.style.transform = 'translateY(0)';
-            }, i * 50 + 150);
-            
-            categoryQuestions.appendChild(questionItem);
+            // Only add to DOM if not null (skipped questions will return null)
+            if (questionItem) {
+                // Add entrance animation with delay based on index
+                setTimeout(() => {
+                    questionItem.style.opacity = '1';
+                    questionItem.style.transform = 'translateY(0)';
+                }, i * 50 + 150);
+                
+                categoryQuestions.appendChild(questionItem);
+            }
         });
     });
 
     // Function to create question item
     function createQuestionItem(item, qNumber) {
+        // Skip placeholder/deleted questions
+        if (item.question === "Упразднено" && item.answer === "Упразднено") {
+            return null;
+        }
+        
         // Create main container for the question
         const questionItem = document.createElement('div');
         questionItem.classList.add('question-item');
@@ -273,97 +286,101 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Create Result Code System ---
     // Function to generate result code
     function generateResultCode(answers) {
-        // Create a compressed version of answers
-        const answerValues = {
-            'correct': 'c',
-            'partial': 'p',
-            'not_asked': 'n',
-            'incorrect': 'i'
-        };
+        let codeString = '';
         
-        let answerString = '';
-        for (let i = 1; i <= totalQuestions; i++) {
-            if (answers[`q${i}`]) {
-                answerString += answerValues[answers[`q${i}`]];
-            } else {
-                answerString += 'x'; // unanswered
+        // Generate code using question numbers and answer values
+        Object.keys(answers).sort((a, b) => {
+            // Extract numbers and sort numerically
+            const numA = parseInt(a.replace('q', ''));
+            const numB = parseInt(b.replace('q', ''));
+            return numA - numB;
+        }).forEach(key => {
+            const questionNumber = key.replace('q', '');
+            const value = answers[key];
+            
+            const questionIndex = parseInt(questionNumber) - 1;
+            // Skip placeholder questions
+            if (questionIndex >= 0 && questionIndex < quizData.length && 
+                !(quizData[questionIndex].question === "Упразднено" && quizData[questionIndex].answer === "Упразднено")) {
+                
+                // Convert value to number code
+                let valueCode;
+                switch (value) {
+                    case 'correct': valueCode = '1'; break;
+                    case 'partial': valueCode = '2'; break;
+                    case 'incorrect': valueCode = '3'; break;
+                    case 'not_asked': valueCode = '4'; break;
+                    default: valueCode = '0'; // Unknown
+                }
+                
+                codeString += `${questionNumber}:${valueCode};`;
             }
-        }
+        });
         
-        // Add score as part of the code
-        const score = calculateScore(answers);
-        const percentage = totalQuestions > 0 ? ((score / totalQuestions) * 100).toFixed(0) : 0;
-        
-        // Create base64 encoded string
-        let codeData = {
-            a: answerString,
-            s: score,
-            p: percentage,
-            t: new Date().toISOString()
-        };
-        
-        return btoa(JSON.stringify(codeData));
+        // Convert to base64 for a shorter URL
+        return btoa(codeString);
     }
     
     // Function to parse result code
     function parseResultCode(code) {
         try {
-            const decoded = JSON.parse(atob(code));
+            // Decode the base64 string
+            const decodedString = atob(code);
+            const answers = {};
             
-            if (!decoded.a || typeof decoded.s !== 'number') {
-                throw new Error('Invalid code format');
-            }
-            
-            const answerValues = {
-                'c': 'correct',
-                'p': 'partial',
-                'n': 'not_asked',
-                'i': 'incorrect',
-                'x': null
-            };
-            
-            let answers = {};
-            const answerString = decoded.a;
-            
-            for (let i = 0; i < answerString.length; i++) {
-                const value = answerValues[answerString[i]];
-                if (value) {
-                    answers[`q${i + 1}`] = value;
+            // Parse the string in format "1:1;2:2;3:1;"
+            const answerPairs = decodedString.split(';').filter(Boolean);
+            answerPairs.forEach(pair => {
+                const [questionNum, valueCode] = pair.split(':');
+                
+                // Convert value code back to answer value
+                let value;
+                switch (valueCode) {
+                    case '1': value = 'correct'; break;
+                    case '2': value = 'partial'; break;
+                    case '3': value = 'incorrect'; break;
+                    case '4': value = 'not_asked'; break;
+                    default: return; // Skip invalid codes
                 }
-            }
+                
+                answers[`q${questionNum}`] = value;
+            });
             
-            return {
-                answers,
-                score: decoded.s,
-                percentage: decoded.p,
-                timestamp: new Date(decoded.t)
-            };
+            return answers;
         } catch (error) {
-            console.error('Failed to parse code:', error);
-            return null;
+            console.error('Failed to parse result code:', error);
+            return {};
         }
     }
     
     // Function to apply answers from code
     function applyAnswersFromCode(answers) {
-        if (!answers) return;
+        // Reset any existing selections
+        document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+            radio.checked = false;
+        });
         
-        Object.entries(answers).forEach(([questionName, value]) => {
-            if (value) {
-                const radioInput = document.querySelector(`input[name="${questionName}"][value="${value}"]`);
-                if (radioInput) {
-                    radioInput.checked = true;
-                    const questionItem = radioInput.closest('.question-item');
-                    if (questionItem) {
-                        questionItem.classList.add('loaded-answer');
-                        setTimeout(() => {
-                            questionItem.classList.remove('loaded-answer');
-                        }, 500);
-                    }
+        // Apply the answers from the parsed code
+        Object.keys(answers).forEach(key => {
+            const questionNumber = key.replace('q', '');
+            const value = answers[key];
+            
+            const questionIndex = parseInt(questionNumber) - 1;
+            
+            // Skip if this is a placeholder question
+            if (questionIndex >= 0 && questionIndex < quizData.length && 
+                !(quizData[questionIndex].question === "Упразднено" && quizData[questionIndex].answer === "Упразднено")) {
+                
+                const radioId = `${key}_${value}`;
+                const radioElement = document.getElementById(radioId);
+                
+                if (radioElement) {
+                    radioElement.checked = true;
                 }
             }
         });
         
+        // Update score display
         calculateAndUpdateScore();
     }
 
@@ -444,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (code) {
             const result = parseResultCode(code);
             if (result) {
-                applyAnswersFromCode(result.answers);
+                applyAnswersFromCode(result);
                 
                 // Visual feedback
                 loadCodeBtn.innerHTML = '<i class="bi bi-check"></i> Загружено';
@@ -500,84 +517,76 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Real-time Score Calculation ---
     function calculateScore(answers) {
         let score = 0;
+        let total = 0;
+        let attempted = 0;
         
-        for (let i = 1; i <= totalQuestions; i++) {
-            const selectedValue = answers[`q${i}`];
-            
-            if (selectedValue) {
-                switch (selectedValue) {
-                    case 'correct':
-                        score += 1;
-                        break;
-                    case 'partial':
-                        score += 0.5;
-                        break;
-                    // 'not_asked' and 'incorrect' get 0 points
+        // Count only non-placeholder questions
+        Object.keys(answers).forEach(key => {
+            const questionIndex = parseInt(key) - 1;
+            // Skip placeholder questions
+            if (questionIndex >= 0 && questionIndex < quizData.length && 
+                !(quizData[questionIndex].question === "Упразднено" && quizData[questionIndex].answer === "Упразднено")) {
+                total++;
+                
+                if (answers[key] === 'correct') {
+                    score++;
+                    attempted++;
+                } else if (answers[key] === 'partial') {
+                    score += 0.5;
+                    attempted++;
+                } else if (answers[key] === 'incorrect') {
+                    attempted++;
+                } else if (answers[key] === 'not_asked') {
+                    attempted++;
                 }
             }
-        }
+        });
         
-        return score;
+        const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+        return { score, total, percentage, attempted };
     }
     
     const calculateAndUpdateScore = () => {
-        let answeredQuestions = 0;
-        currentAnswers = {};
-
-        for (let i = 1; i <= totalQuestions; i++) {
-            // Query within the form for the checked radio in the group
-            const selectedOption = quizForm.querySelector(`input[name="q${i}"]:checked`);
-
-            if (selectedOption) {
-                answeredQuestions++;
-                currentAnswers[`q${i}`] = selectedOption.value;
-            }
-        }
-
-        const score = calculateScore(currentAnswers);
-        const percentage = totalQuestions > 0 ? ((score / totalQuestions) * 100) : 0;
-        const progressPercentage = totalQuestions > 0 ? ((answeredQuestions / totalQuestions) * 100) : 0;
-
-        // Update Score Display
-        scoreValueEl.textContent = score;
-        scorePercentageEl.textContent = `${percentage.toFixed(1)}%`;
+        const answers = {};
         
-        // Update progress bar
-        progressBarEl.style.width = `${progressPercentage}%`;
-
-        // Update Progress Indicator
-        progressIndicatorEl.textContent = `Отвечено: ${answeredQuestions} / ${totalQuestions}`;
-
-        // Update Pass/Fail Status (Optional: Only show when all answered)
-        if (answeredQuestions === totalQuestions) {
-             const passThreshold = 70; // Example threshold 70%
-             if (percentage >= passThreshold) {
-                 passFailStatusEl.textContent = 'Результат: Сдал';
-                 passFailStatusEl.className = 'pass'; // Use class for styling
-                 
-                 // Add celebration animation
-                 scoreBoard.classList.add('pass-celebration');
-                 setTimeout(() => {
-                     scoreBoard.classList.remove('pass-celebration');
-                 }, 1500);
-             } else {
-                 passFailStatusEl.textContent = 'Результат: Не сдал';
-                 passFailStatusEl.className = 'fail'; // Use class for styling
-             }
+        document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+            // Extract question number from input ID (format: q{number}_{option})
+            const questionKey = radio.id.split('_')[0];
+            const questionValue = radio.value;
+            answers[questionKey] = questionValue;
+        });
+        
+        const resultCode = generateResultCode(answers);
+        window.history.replaceState({}, '', `?code=${resultCode}`);
+        
+        const scoreResult = calculateScore(answers);
+        scoreValueEl.textContent = scoreResult.score.toFixed(1);
+        scoreTotalEl.textContent = scoreResult.total;
+        scorePercentageEl.textContent = `${scoreResult.percentage}%`;
+        
+        // Update progress
+        progressIndicatorEl.textContent = `Отвечено: ${scoreResult.attempted} / ${scoreResult.total}`;
+        const progressPercent = Math.round((scoreResult.attempted / scoreResult.total) * 100);
+        progressBarEl.style.width = `${progressPercent}%`;
+        
+        // Pass fail status
+        const passThreshold = 70;
+        if (scoreResult.percentage >= passThreshold) {
+            passFailStatusEl.innerHTML = '<i class="bi bi-check-circle-fill"></i> СДАН';
+            passFailStatusEl.classList.add('pass');
+            passFailStatusEl.classList.remove('fail');
         } else {
-            passFailStatusEl.textContent = 'Завершите тест для итогового результата'; // Placeholder
-            passFailStatusEl.className = ''; // Remove pass/fail class
+            passFailStatusEl.innerHTML = '<i class="bi bi-x-circle-fill"></i> НЕ СДАН';
+            passFailStatusEl.classList.add('fail');
+            passFailStatusEl.classList.remove('pass');
         }
         
-        // Generate and update result code
-        resultCode = generateResultCode(currentAnswers);
-        resultCodeEl.value = resultCode;
-        
-        // Show the share container if we have answers
-        if (answeredQuestions > 0) {
-            shareResultContainer.classList.add('visible');
-            shareButton.classList.add('active');
+        // Reveal score board if more than 80% answered
+        if (scoreResult.attempted / scoreResult.total >= 0.8) {
+            scoreBoard.classList.add('visible');
         }
+        
+        return answers;
     };
 
     // --- Event Listener for Changes ---
@@ -600,64 +609,60 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- Test Action Buttons ---
     
-    // Mark all answers as correct
-    markAllCorrectBtn.addEventListener('click', () => {
-        // Add button animation
-        markAllCorrectBtn.classList.add('button-clicked');
-        setTimeout(() => {
-            markAllCorrectBtn.classList.remove('button-clicked');
-        }, 300);
-        
-        for (let i = 1; i <= totalQuestions; i++) {
-            const correctOption = quizForm.querySelector(`input[name="q${i}"][value="correct"]`);
-            if (correctOption) {
-                correctOption.checked = true;
-                
-                // Add visual feedback
-                const questionItem = correctOption.closest('.question-item');
-                if (questionItem) {
-                    questionItem.classList.add('selection-highlight');
-                    setTimeout(() => {
-                        questionItem.classList.remove('selection-highlight');
-                    }, 300);
-                }
-            }
-        }
-        calculateAndUpdateScore();
-    });
-    
-    // Randomize all answers
-    randomizeAnswersBtn.addEventListener('click', () => {
-        // Add button animation
-        randomizeAnswersBtn.classList.add('button-clicked');
-        setTimeout(() => {
-            randomizeAnswersBtn.classList.remove('button-clicked');
-        }, 300);
-        
-        const optionValues = ['correct', 'partial', 'not_asked', 'incorrect'];
-        
-        for (let i = 1; i <= totalQuestions; i++) {
-            // Select a random option
-            const randomIndex = Math.floor(Math.random() * optionValues.length);
-            const randomOption = quizForm.querySelector(`input[name="q${i}"][value="${optionValues[randomIndex]}"]`);
+    // Mark all correct for testing
+    if (markAllCorrectBtn) {
+        markAllCorrectBtn.addEventListener('click', () => {
+            // Uncheck all inputs first
+            document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+                radio.checked = false;
+            });
             
-            if (randomOption) {
-                randomOption.checked = true;
-                
-                // Add staggered visual feedback
-                const questionItem = randomOption.closest('.question-item');
-                if (questionItem) {
-                    setTimeout(() => {
-                        questionItem.classList.add('selection-highlight');
-                        setTimeout(() => {
-                            questionItem.classList.remove('selection-highlight');
-                        }, 300);
-                    }, i * 100); // Stagger the animations
+            // Mark all valid questions as correct
+            quizData.forEach((item, index) => {
+                // Skip placeholder questions
+                if (!(item.question === "Упразднено" && item.answer === "Упразднено")) {
+                    const questionNum = index + 1;
+                    const radioId = `q${questionNum}_correct`;
+                    const radioElement = document.getElementById(radioId);
+                    
+                    if (radioElement) {
+                        radioElement.checked = true;
+                    }
                 }
-            }
-        }
-        calculateAndUpdateScore();
-    });
+            });
+            
+            calculateAndUpdateScore();
+        });
+    }
+    
+    // Randomize answers for testing
+    if (randomizeAnswersBtn) {
+        randomizeAnswersBtn.addEventListener('click', () => {
+            // Uncheck all inputs first
+            document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+                radio.checked = false;
+            });
+            
+            const options = ['correct', 'partial', 'incorrect', 'not_asked'];
+            
+            // Randomize all valid questions
+            quizData.forEach((item, index) => {
+                // Skip placeholder questions
+                if (!(item.question === "Упразднено" && item.answer === "Упразднено")) {
+                    const questionNum = index + 1;
+                    const randomOption = options[Math.floor(Math.random() * options.length)];
+                    const radioId = `q${questionNum}_${randomOption}`;
+                    const radioElement = document.getElementById(radioId);
+                    
+                    if (radioElement) {
+                        radioElement.checked = true;
+                    }
+                }
+            });
+            
+            calculateAndUpdateScore();
+        });
+    }
 
     // --- Add additional styles for animations ---
     const style = document.createElement('style');
