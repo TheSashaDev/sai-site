@@ -17,41 +17,78 @@
         <i class="bi bi-moon-fill"></i>
     </div>
 
-    <div class="quiz-container">
-        <h1>Тестирование</h1>
-        <p class="author">Made by Jonathan Greenfield</p>
-        
-        <!-- Category Navigation -->
-        <div class="category-nav" id="category-nav">
-            <button class="cat-nav-item" data-category="all"><i class="bi bi-layout-text-window"></i> Все вопросы</button>
-            <button class="cat-nav-item" data-category="Уголовный кодекс"><i class="bi bi-shield-lock"></i> УК</button>
-            <button class="cat-nav-item" data-category="Административный + Дорожный кодексы"><i class="bi bi-signpost-2"></i> АК+ДК</button>
-            <button class="cat-nav-item" data-category="Законы"><i class="bi bi-journal-text"></i> Законы</button>
-            <button class="cat-nav-item" data-category="Процессуальный кодекс"><i class="bi bi-person-vcard"></i> ПК</button>
-            <button class="cat-nav-item" data-category="Устав LSCSD"><i class="bi bi-book"></i> Устав LSCSD</button>
-        </div>
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+        <button class="tab-button active" data-tab="manual-mode">
+            <i class="bi bi-pencil-square"></i> Ручной режим
+        </button>
+        <button class="tab-button" data-tab="code-checker">
+            <i class="bi bi-code-slash"></i> Проверка кода студента
+        </button>
+    </div>
 
-        <div class="score-board" id="score-board">
-            <div id="realtime-score">
-                Оценка: <span class="score-value">0</span> / <span class="score-total">0</span> Баллов (<span class="score-percentage">0%</span>)
+    <!-- Manual Mode Content -->
+    <div id="manual-mode" class="tab-content active">
+        <div class="quiz-container">
+            <h1>Тестирование</h1>
+            <p class="author">Made by Jonathan Greenfield</p>
+            
+            <!-- Category Navigation -->
+            <div class="category-nav" id="category-nav">
+                <button class="cat-nav-item" data-category="all"><i class="bi bi-layout-text-window"></i> Все вопросы</button>
+                <button class="cat-nav-item" data-category="Уголовный кодекс"><i class="bi bi-shield-lock"></i> УК</button>
+                <button class="cat-nav-item" data-category="Административный + Дорожный кодексы"><i class="bi bi-signpost-2"></i> АК+ДК</button>
+                <button class="cat-nav-item" data-category="Законы"><i class="bi bi-journal-text"></i> Законы</button>
+                <button class="cat-nav-item" data-category="Процессуальный кодекс"><i class="bi bi-person-vcard"></i> ПК</button>
+                <button class="cat-nav-item" data-category="Устав LSCSD"><i class="bi bi-book"></i> Устав LSCSD</button>
             </div>
-            <div class="progress-container">
-                <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+
+            <div class="score-board" id="score-board">
+                <div id="realtime-score">
+                    Оценка: <span class="score-value">0</span> / <span class="score-total">0</span> Баллов (<span class="score-percentage">0%</span>)
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+                </div>
+                <div id="progress-indicator">Отвечено: 0 / 0</div>
+                <div id="pass-fail-status"></div>
             </div>
-            <div id="progress-indicator">Отвечено: 0 / 0</div>
-            <div id="pass-fail-status"></div>
+
+            <!-- Test action buttons -->
+            <div class="test-actions" style="display: none;">
+                <button id="mark-all-correct"><i class="bi bi-check-all"></i> Отметить все правильно</button>
+                <button id="randomize-answers"><i class="bi bi-shuffle"></i> Случайные ответы</button>
+            </div>
+
+            <form id="quiz-form">
+                <!-- Questions will be dynamically inserted here as category containers -->
+            </form>
         </div>
+    </div>
 
-        <!-- Test action buttons -->
-        <div class="test-actions" style="display: none;">
-            <button id="mark-all-correct"><i class="bi bi-check-all"></i> Отметить все правильно</button>
-            <button id="randomize-answers"><i class="bi bi-shuffle"></i> Случайные ответы</button>
+    <!-- Student Code Checker Content -->
+    <div id="code-checker" class="tab-content">
+        <div class="quiz-container">
+            <h1>Проверка кода студента</h1>
+            <p class="author">Инструмент для проверки результатов экзамена</p>
+            
+            <div class="code-checker-container">
+                <div class="code-input-section">
+                    <h2><i class="bi bi-code-square"></i> Код результата экзамена</h2>
+                    <p class="description">Вставьте код результата, полученный от студента, для проверки его ответов</p>
+                    <div class="input-group">
+                        <textarea id="student-code-input" placeholder="Вставьте код результата студента здесь..."></textarea>
+                        <button id="decode-result-btn" class="primary-button">
+                            <i class="bi bi-arrow-repeat"></i> Расшифровать
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="student-result-container" class="hidden">
+                    <!-- Results will be dynamically inserted here -->
+                </div>
+            </div>
         </div>
-
-        <form id="quiz-form">
-            <!-- Questions will be dynamically inserted here as category containers -->
-        </form>
-
     </div>
 
     <script src="quiz-data.js"></script> <!---- MAKE SURE quiz-data.js IS IN THE SAME FOLDER --->

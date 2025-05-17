@@ -1,4 +1,553 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Tab navigation functionality
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    // Set up tab switching
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const tabId = button.getAttribute('data-tab');
+            
+            // Update active button
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // Update active content
+            tabContents.forEach(content => {
+                content.classList.remove('active');
+                if (content.id === tabId) {
+                    content.classList.add('active');
+                }
+            });
+        });
+    });
+    
+    // Student Code Checker functionality
+    const studentCodeInput = document.getElementById('student-code-input');
+    const decodeResultBtn = document.getElementById('decode-result-btn');
+    const studentResultContainer = document.getElementById('student-result-container');
+    
+    // Process student code
+    const processStudentCode = () => {
+        const code = studentCodeInput.value.trim();
+        if (!code) {
+            alert('Пожалуйста, введите код результата студента');
+            return;
+        }
+        
+        try {
+            // Show loading state
+            studentResultContainer.innerHTML = `
+                <div class="loading-indicator">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">Расшифровка кода результата...</div>
+                </div>
+            `;
+            studentResultContainer.classList.add('visible');
+            
+            // Simulate processing delay
+            setTimeout(() => {
+                try {
+                    // Function to handle UTF-8 encoding issues
+                    function utf8Decode(base64String) {
+                        try {
+                            // First decode base64
+                            const binary = atob(base64String);
+                            
+                            // Method 1: Try to handle UTF-8 encoding with decodeURIComponent
+                            try {
+                                const percentEncoded = Array.from(binary)
+                                    .map(char => '%' + ('00' + char.charCodeAt(0).toString(16)).slice(-2))
+                                    .join('');
+                                return JSON.parse(decodeURIComponent(percentEncoded));
+                            } catch (e) {
+                                // Method 2: Try standard JSON parsing
+                                try {
+                                    return JSON.parse(binary);
+                                } catch (e2) {
+                                    // Method 3: Try handling URI encoded content
+                                    try {
+                                        return JSON.parse(decodeURIComponent(binary));
+                                    } catch (e3) {
+                                        // Method 4: Manual character replacement for common Cyrillic issues
+                                        let fixed = binary
+                                            // Replace common mangled Cyrillic characters
+                                            .replace(/Ð\u008e/g, "Ю")
+                                            .replace(/Ð\u0097/g, "З")
+                                            .replace(/Ð\u0090/g, "А")
+                                            .replace(/Ð\u009a/g, "К")
+                                            .replace(/Ð\u009e/g, "О")
+                                            .replace(/Ð\u009d/g, "Н")
+                                            .replace(/Ð\u00b0/g, "а")
+                                            .replace(/Ð\u00ba/g, "к")
+                                            .replace(/Ð\u00be/g, "о")
+                                            .replace(/Ð\u00bd/g, "н")
+                                            .replace(/Ð/g, "")  // Remove remaining Ð characters
+                                            .replace(/Ñ/g, "");  // Remove remaining Ñ characters
+                                        
+                                        // Try to parse the fixed string
+                                        return JSON.parse(fixed);
+                                    }
+                                }
+                            }
+                        } catch (finalError) {
+                            console.error("All decode attempts failed", finalError);
+                            throw new Error("Failed to decode data");
+                        }
+                    }
+                    
+                    // Try to decode with our UTF-8 handler
+                    const results = utf8Decode(code);
+                    displayStudentResults(results);
+                } catch (error) {
+                    studentResultContainer.innerHTML = `
+                        <div class="error-message">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <h3>Ошибка при расшифровке кода</h3>
+                            <p>Код некорректен или имеет неверный формат.</p>
+                            <p>Ошибка: ${error.message}</p>
+                        </div>
+                    `;
+                }
+            }, 1000);
+        } catch (error) {
+            alert('Ошибка при обработке кода. Убедитесь, что он верный.');
+            console.error('Error processing student code:', error);
+        }
+    };
+    
+    // Display student results
+    const displayStudentResults = (results) => {
+        if (!results || !results.student) {
+            throw new Error('Invalid result data format');
+        }
+        
+        // Extract data
+        const student = results.student;
+        const questions = results.questions || [];
+        const correctCount = results.correctCount || 0;
+        const totalQuestions = results.totalQuestions || questions.length;
+        const percentage = results.percentage || Math.round((correctCount / totalQuestions) * 100);
+        const examTime = results.totalTime || 0;
+        const tabSwitches = results.tabSwitches || 0;
+        const banned = results.banned || false;
+        const banReason = results.banReason || '';
+        const timestamp = results.timestamp ? new Date(results.timestamp) : new Date();
+        
+        // Determine pass/fail status
+        const passThreshold = 70;
+        const isPassing = percentage >= passThreshold && !banned;
+        
+        // Generate HTML for student results
+        let html = '';
+        
+        // Special display for banned students
+        if (banned) {
+            html += `
+                <div class="banned-student-notice">
+                    <i class="bi bi-slash-circle"></i>
+                    <h3>Студент отстранен от экзамена</h3>
+                    <p>${banReason || 'Нарушение правил экзамена'}</p>
+                </div>
+            `;
+        }
+        
+        // Student info and score header
+        html += `
+            <div class="student-info-header">
+                <div class="student-personal-info">
+                    <h3>${student.name}</h3>
+                    <p>ID: ${student.id}</p>
+                    <p>Дата: ${timestamp.toLocaleString()}</p>
+                </div>
+                <div class="student-score-summary">
+                    <div class="student-score ${isPassing ? 'pass' : 'fail'}">
+                        ${percentage}%
+                    </div>
+                    <p>${correctCount} из ${totalQuestions} правильных ответов</p>
+                    <p class="status ${isPassing ? 'pass' : 'fail'}">
+                        ${banned ? 'Отстранен' : (isPassing ? 'Сдал' : 'Не сдал')}
+                    </p>
+                </div>
+            </div>
+            
+            <div class="exam-metadata">
+                <p><i class="bi bi-stopwatch"></i> Общее время: ${formatTime(examTime)}</p>
+                <p><i class="bi bi-window-stack"></i> Переключений вкладок: ${tabSwitches}</p>
+            </div>
+        `;
+        
+        // Categorize results by section
+        const categories = {};
+        questions.forEach(q => {
+            const category = q.category || 'Без категории';
+            if (!categories[category]) {
+                categories[category] = {
+                    total: 0,
+                    correct: 0,
+                    incorrect: 0
+                };
+            }
+            categories[category].total++;
+            if (q.isCorrect) {
+                categories[category].correct++;
+            } else {
+                categories[category].incorrect++;
+            }
+        });
+        
+        // Category summary
+        html += `
+            <h3 class="answers-header">Результаты по категориям</h3>
+            <table class="answers-table">
+                <thead>
+                    <tr>
+                        <th>Категория</th>
+                        <th>Всего вопросов</th>
+                        <th>Правильно</th>
+                        <th>Не правильно</th>
+                        <th>Процент</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        Object.keys(categories).forEach(category => {
+            const stats = categories[category];
+            const categoryPercentage = Math.round((stats.correct / stats.total) * 100);
+            html += `
+                <tr>
+                    <td>${category}</td>
+                    <td>${stats.total}</td>
+                    <td class="correct-cell">${stats.correct}</td>
+                    <td class="incorrect-cell">${stats.incorrect}</td>
+                    <td>${categoryPercentage}%</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+        `;
+        
+        // Detailed answers
+        html += `
+            <h3 class="answers-header">Ответы на вопросы</h3>
+            <table class="answers-table">
+                <thead>
+                    <tr>
+                        <th>№</th>
+                        <th>Категория</th>
+                        <th>Вопрос</th>
+                        <th>Ответ студента</th>
+                        <th>Правильный ответ</th>
+                        <th>Результат</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        questions.forEach((question, index) => {
+            const isTextAnswer = question.userAnswer && question.userAnswer.length > 100;
+            const displayUserAnswer = isTextAnswer ? 
+                `<div class="text-answer-display">${question.userAnswer}</div>` : 
+                (question.userAnswer || 'Не отвечено');
+                
+            html += `
+                <tr class="${question.isCorrect ? 'correct-row' : 'incorrect-row'}">
+                    <td>${index + 1}</td>
+                    <td>${question.category || 'N/A'}</td>
+                    <td>${question.question}${question.status === "Обязательно" ? '<span class="status-required-badge">Обязательно</span>' : ''}</td>
+                    <td>${displayUserAnswer}</td>
+                    <td>${question.correctAnswer}</td>
+                    <td class="${question.isCorrect ? 'correct-cell' : 'incorrect-cell'}">
+                        ${question.isCorrect ? 
+                            '<i class="bi bi-check-circle-fill"></i> Правильно' : 
+                            '<i class="bi bi-x-circle-fill"></i> Неправильно'}
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+            
+            <div class="student-result-actions">
+                <button id="print-student-result">
+                    <i class="bi bi-printer"></i> Распечатать отчет
+                </button>
+                <button id="clear-student-result">
+                    <i class="bi bi-x-circle"></i> Закрыть
+                </button>
+            </div>
+        `;
+        
+        // Update the container with results
+        studentResultContainer.innerHTML = html;
+        studentResultContainer.classList.add('visible');
+        
+        // Add event listeners to buttons
+        document.getElementById('print-student-result').addEventListener('click', () => {
+            printStudentReport(results);
+        });
+        
+        document.getElementById('clear-student-result').addEventListener('click', () => {
+            studentResultContainer.classList.remove('visible');
+            setTimeout(() => {
+                studentResultContainer.innerHTML = '';
+            }, 500);
+        });
+    };
+    
+    // Print student report
+    const printStudentReport = (results) => {
+        const student = results.student;
+        const questions = results.questions || [];
+        const correctCount = results.correctCount || 0;
+        const totalQuestions = results.totalQuestions || questions.length;
+        const percentage = results.percentage || Math.round((correctCount / totalQuestions) * 100);
+        const examTime = results.totalTime || 0;
+        const banned = results.banned || false;
+        const timestamp = results.timestamp ? new Date(results.timestamp) : new Date();
+        
+        // Determine pass/fail status
+        const passThreshold = 70;
+        const isPassing = percentage >= passThreshold && !banned;
+        
+        // Create print window
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <html>
+            <head>
+                <title>Результаты экзамена SAI - ${student.name}</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        margin: 20px;
+                        color: #333;
+                    }
+                    
+                    h1, h2, h3 {
+                        color: #6200ee;
+                    }
+                    
+                    .report-header {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 20px;
+                        padding-bottom: 10px;
+                        border-bottom: 1px solid #ddd;
+                    }
+                    
+                    .student-info {
+                        margin-bottom: 20px;
+                    }
+                    
+                    .score-summary {
+                        background-color: #f5f5f5;
+                        padding: 15px;
+                        border-radius: 5px;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .score-circle {
+                        display: inline-block;
+                        width: 100px;
+                        height: 100px;
+                        border-radius: 50%;
+                        background-color: #f2f2f2;
+                        text-align: center;
+                        line-height: 100px;
+                        font-size: 24px;
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                    }
+                    
+                    .pass {
+                        color: #00a854;
+                    }
+                    
+                    .fail {
+                        color: #cf4d71;
+                    }
+                    
+                    .ban {
+                        color: #cf4d71;
+                    }
+                    
+                    .metadata {
+                        display: flex;
+                        gap: 20px;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .metadata div {
+                        background-color: #f5f5f5;
+                        padding: 10px;
+                        border-radius: 5px;
+                        flex: 1;
+                    }
+                    
+                    .banned-notice {
+                        background-color: #fff1f0;
+                        border: 1px solid #ffa39e;
+                        padding: 20px;
+                        margin-bottom: 20px;
+                        border-radius: 5px;
+                        text-align: center;
+                    }
+                    
+                    .report-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-bottom: 20px;
+                    }
+                    
+                    .report-table th, .report-table td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    
+                    .report-table th {
+                        background-color: #f2f2f2;
+                    }
+                    
+                    .correct-row {
+                        background-color: rgba(0, 168, 84, 0.1);
+                    }
+                    
+                    .incorrect-row {
+                        background-color: rgba(216, 27, 96, 0.1);
+                    }
+                    
+                    .correct-cell {
+                        color: #00a854;
+                    }
+                    
+                    .incorrect-cell {
+                        color: #cf4d71;
+                    }
+                    
+                    .report-footer {
+                        margin-top: 30px;
+                        border-top: 1px solid #ddd;
+                        padding-top: 15px;
+                        font-size: 12px;
+                        color: #777;
+                    }
+                    
+                    @media print {
+                        body {
+                            margin: 0;
+                            padding: 15px;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="report-header">
+                    <h1>Результаты экзамена SAI</h1>
+                    <div>
+                        <p>${timestamp.toLocaleString()}</p>
+                    </div>
+                </div>
+                
+                <div class="student-info">
+                    <h2>Информация о студенте</h2>
+                    <p><strong>Имя:</strong> ${student.name}</p>
+                    <p><strong>ID:</strong> ${student.id}</p>
+                </div>
+                
+                ${banned ? `
+                <div class="banned-notice">
+                    <h2 class="ban">Студент отстранен от экзамена</h2>
+                    <p>${results.banReason || 'Нарушение правил экзамена'}</p>
+                </div>
+                ` : ''}
+                
+                <div class="score-summary">
+                    <div class="score-circle ${isPassing ? 'pass' : 'fail'}">
+                        ${percentage}%
+                    </div>
+                    <h3>${correctCount} из ${totalQuestions} правильных ответов</h3>
+                    <h2 class="${isPassing ? 'pass' : (banned ? 'ban' : 'fail')}">
+                        Результат: ${banned ? 'Отстранен' : (isPassing ? 'Сдал' : 'Не сдал')}
+                    </h2>
+                </div>
+                
+                <div class="metadata">
+                    <div>
+                        <h3>Детали экзамена</h3>
+                        <p><strong>Общее время:</strong> ${formatTime(examTime)}</p>
+                        <p><strong>Переключений вкладок:</strong> ${results.tabSwitches || 0}</p>
+                    </div>
+                </div>
+                
+                <h2>Детальные ответы</h2>
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>Категория</th>
+                            <th>Вопрос</th>
+                            <th>Ответ студента</th>
+                            <th>Правильный ответ</th>
+                            <th>Результат</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `);
+        
+        // Add rows for each question
+        questions.forEach((question, index) => {
+            printWindow.document.write(`
+                <tr class="${question.isCorrect ? 'correct-row' : 'incorrect-row'}">
+                    <td>${index + 1}</td>
+                    <td>${question.category || 'N/A'}</td>
+                    <td>${question.question}</td>
+                    <td>${question.userAnswer || 'Не отвечено'}</td>
+                    <td>${question.correctAnswer}</td>
+                    <td class="${question.isCorrect ? 'correct-cell' : 'incorrect-cell'}">
+                        ${question.isCorrect ? 'Правильно' : 'Не правильно'}
+                    </td>
+                </tr>
+            `);
+        });
+        
+        printWindow.document.write(`
+                    </tbody>
+                </table>
+                
+                <div class="report-footer">
+                    <p>Экзамен SAI - Отчет сгенерирован системой</p>
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    }
+                </script>
+            </body>
+            </html>
+        `);
+    };
+    
+    // Add event listeners for student code checker
+    if (decodeResultBtn) {
+        decodeResultBtn.addEventListener('click', processStudentCode);
+        
+        // Allow pressing Enter in the input to trigger decoding
+        studentCodeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                processStudentCode();
+            }
+        });
+    }
+
     const quizForm = document.getElementById('quiz-form');
     const scoreBoard = document.getElementById('score-board');
     const scoreValueEl = scoreBoard.querySelector('.score-value');
@@ -400,7 +949,58 @@ document.addEventListener('DOMContentLoaded', () => {
     // Function to parse result code
     function parseResultCode(code) {
         try {
-            const decoded = JSON.parse(atob(code));
+            let decoded;
+            
+            // Function to handle UTF-8 encoding issues
+            function utf8Decode(base64String) {
+                try {
+                    // First decode base64
+                    const binary = atob(base64String);
+                    
+                    // Method 1: Try to handle UTF-8 encoding with decodeURIComponent
+                    try {
+                        const percentEncoded = Array.from(binary)
+                            .map(char => '%' + ('00' + char.charCodeAt(0).toString(16)).slice(-2))
+                            .join('');
+                        return JSON.parse(decodeURIComponent(percentEncoded));
+                    } catch (e) {
+                        // Method 2: Try standard JSON parsing
+                        try {
+                            return JSON.parse(binary);
+                        } catch (e2) {
+                            // Method 3: Try handling URI encoded content
+                            try {
+                                return JSON.parse(decodeURIComponent(binary));
+                            } catch (e3) {
+                                // Method 4: Manual character replacement for common Cyrillic issues
+                                let fixed = binary
+                                    // Replace common mangled Cyrillic characters
+                                    .replace(/Ð\u008e/g, "Ю")
+                                    .replace(/Ð\u0097/g, "З")
+                                    .replace(/Ð\u0090/g, "А")
+                                    .replace(/Ð\u009a/g, "К")
+                                    .replace(/Ð\u009e/g, "О")
+                                    .replace(/Ð\u009d/g, "Н")
+                                    .replace(/Ð\u00b0/g, "а")
+                                    .replace(/Ð\u00ba/g, "к")
+                                    .replace(/Ð\u00be/g, "о")
+                                    .replace(/Ð\u00bd/g, "н")
+                                    .replace(/Ð/g, "")  // Remove remaining Ð characters
+                                    .replace(/Ñ/g, "");  // Remove remaining Ñ characters
+                                
+                                // Try to parse the fixed string
+                                return JSON.parse(fixed);
+                            }
+                        }
+                    }
+                } catch (finalError) {
+                    console.error("All decode attempts failed", finalError);
+                    throw new Error("Failed to decode data");
+                }
+            }
+            
+            // Try to decode with our UTF-8 handler
+            decoded = utf8Decode(code);
             
             if (!decoded.a || typeof decoded.s !== 'number') {
                 throw new Error('Invalid code format');
@@ -847,8 +1447,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Add additional styles for animations ---
-    const style = document.createElement('style');
-    style.textContent = `
+    const animationStyle = document.createElement('style');
+    animationStyle.textContent = `
         .button-clicked {
             transform: scale(0.95) !important;
         }
@@ -1081,7 +1681,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     `;
-    document.head.appendChild(style);
+    document.head.appendChild(animationStyle);
 
     // --- Initial Calculation ---
     // Call once on load to set initial state (0 score, etc.)
@@ -1749,4 +2349,813 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Add student result functionality
+    const addStudentResultFeatures = () => {
+        // Create student result container
+        const studentResultContainer = document.createElement('div');
+        studentResultContainer.classList.add('student-result-container');
+        studentResultContainer.innerHTML = `
+            <div class="result-header">
+                <h3><i class="bi bi-mortarboard-fill"></i> Результаты студента</h3>
+                <div class="result-description">Введите код, полученный от студента после прохождения экзамена, для проверки результатов.</div>
+            </div>
+            <div class="student-code-input-container">
+                <input type="text" id="student-code-input" placeholder="Вставьте код результата студента">
+                <button id="load-student-code"><i class="bi bi-arrow-repeat"></i> Загрузить</button>
+            </div>
+            <div id="student-result-details" class="hidden">
+                <!-- Will be populated dynamically -->
+            </div>
+        `;
+        
+        // Insert after share result container
+        const shareResultContainer = document.querySelector('.share-result-container');
+        shareResultContainer.insertAdjacentElement('afterend', studentResultContainer);
+        
+        // Get student result elements
+        const studentCodeInput = document.getElementById('student-code-input');
+        const loadStudentCodeBtn = document.getElementById('load-student-code');
+        const studentResultDetails = document.getElementById('student-result-details');
+        
+        // Handle loading student code
+        loadStudentCodeBtn.addEventListener('click', () => {
+            const code = studentCodeInput.value.trim();
+            if (code) {
+                try {
+                    // Function to handle UTF-8 encoding issues
+                    function utf8Decode(base64String) {
+                        try {
+                            // First decode base64
+                            const binary = atob(base64String);
+                            
+                            // Method 1: Try to handle UTF-8 encoding with decodeURIComponent
+                            try {
+                                const percentEncoded = Array.from(binary)
+                                    .map(char => '%' + ('00' + char.charCodeAt(0).toString(16)).slice(-2))
+                                    .join('');
+                                return JSON.parse(decodeURIComponent(percentEncoded));
+                            } catch (e) {
+                                // Method 2: Try standard JSON parsing
+                                try {
+                                    return JSON.parse(binary);
+                                } catch (e2) {
+                                    // Method 3: Try handling URI encoded content
+                                    try {
+                                        return JSON.parse(decodeURIComponent(binary));
+                                    } catch (e3) {
+                                        // Method 4: Manual character replacement for common Cyrillic issues
+                                        let fixed = binary
+                                            // Replace common mangled Cyrillic characters
+                                            .replace(/Ð\u008e/g, "Ю")
+                                            .replace(/Ð\u0097/g, "З")
+                                            .replace(/Ð\u0090/g, "А")
+                                            .replace(/Ð\u009a/g, "К")
+                                            .replace(/Ð\u009e/g, "О")
+                                            .replace(/Ð\u009d/g, "Н")
+                                            .replace(/Ð\u00b0/g, "а")
+                                            .replace(/Ð\u00ba/g, "к")
+                                            .replace(/Ð\u00be/g, "о")
+                                            .replace(/Ð\u00bd/g, "н")
+                                            .replace(/Ð/g, "")  // Remove remaining Ð characters
+                                            .replace(/Ñ/g, "");  // Remove remaining Ñ characters
+                                        
+                                        // Try to parse the fixed string
+                                        return JSON.parse(fixed);
+                                    }
+                                }
+                            }
+                        } catch (finalError) {
+                            console.error("All decode attempts failed", finalError);
+                            throw new Error("Failed to decode data");
+                        }
+                    }
+                    
+                    // Try to decode with our UTF-8 handler
+                    const results = utf8Decode(code);
+                    displayStudentResults(results);
+                    
+                    // Visual feedback
+                    loadStudentCodeBtn.innerHTML = '<i class="bi bi-check"></i> Загружено';
+                    setTimeout(() => {
+                        loadStudentCodeBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Загрузить';
+                    }, 2000);
+                } catch (error) {
+                    console.error('Failed to parse student code:', error);
+                    loadStudentCodeBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Неверный код';
+                    setTimeout(() => {
+                        loadStudentCodeBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Загрузить';
+                    }, 2000);
+                    alert('Ошибка при расшифровке кода: ' + error.message);
+                }
+            }
+        });
+        
+        // Function to display student results
+        const displayStudentResults = (results) => {
+            if (!results || !results.student || !results.questions) {
+                alert('Некорректный формат данных студента');
+                return;
+            }
+            
+            // Calculate stats
+            const totalQuestions = results.totalQuestions || results.questions.length;
+            const correctCount = results.correctCount || results.questions.filter(q => q.isCorrect).length;
+            const percentage = Math.round((correctCount / totalQuestions) * 100);
+            const passThreshold = 70;
+            const passStatus = percentage >= passThreshold ? 'Сдал' : 'Не сдал';
+            
+            // Format date
+            const date = results.timestamp ? new Date(results.timestamp) : new Date();
+            const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+            
+            // Generate HTML for student results
+            let html = `
+                <div class="student-info-header">
+                    <div class="student-personal-info">
+                        <h3>${results.student.name}</h3>
+                        <p>ID: ${results.student.id}</p>
+                        <p>Дата: ${formattedDate}</p>
+                    </div>
+                    <div class="student-score-summary">
+                        <div class="student-score ${percentage >= passThreshold ? 'pass' : 'fail'}">
+                            ${percentage}%
+                        </div>
+                        <p>${correctCount} из ${totalQuestions} правильных ответов</p>
+                        <p class="status ${percentage >= passThreshold ? 'pass' : 'fail'}">
+                            ${passStatus}
+                        </p>
+                    </div>
+                </div>
+                <div class="exam-metadata">
+                    <p><i class="bi bi-stopwatch"></i> Общее время: ${formatTime(results.totalTime || 0)}</p>
+                    <p><i class="bi bi-window-stack"></i> Переключений вкладок: ${results.tabSwitches || 0}</p>
+                </div>
+                <div class="gemini-analysis">
+                    <h4><i class="bi bi-robot"></i> Анализ Gemini AI</h4>
+                    <p>Средний балл: <strong>${(percentage / 10).toFixed(1)}</strong> из 10</p>
+                    <p>Рекомендация: <strong>${percentage >= passThreshold ? 'Принять' : 'Отклонить'}</strong></p>
+                    <p class="gemini-note">* Gemini AI оценивает ответы студента на основе близости к правильным ответам и понимания темы.</p>
+                </div>
+                <h4 class="answers-header">Ответы по вопросам</h4>
+                <div class="student-answers">
+                    <table class="answers-table">
+                        <thead>
+                            <tr>
+                                <th>№</th>
+                                <th>Категория</th>
+                                <th>Вопрос</th>
+                                <th>Статус</th>
+                                <th>Ответ студента</th>
+                                <th>Правильный ответ</th>
+                                <th>Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // Add rows for each question
+            results.questions.forEach((question, index) => {
+                // Handle text answers with highlighting
+                const userAnswer = question.userAnswer || 'Не отвечено';
+                const isTextAnswer = typeof userAnswer === 'string' && userAnswer.length > 100;
+                const displayUserAnswer = isTextAnswer ? 
+                    `<div class="text-answer-display">${userAnswer}</div>` : userAnswer;
+                    
+                html += `
+                    <tr class="${question.isCorrect ? 'correct-row' : 'incorrect-row'}">
+                        <td>${index + 1}</td>
+                        <td>${question.category || 'N/A'}</td>
+                        <td>${question.question}${question.status === "Обязательно" ? '<span class="status-required-badge">Обязательно</span>' : ''}</td>
+                        <td>${question.status || 'N/A'}</td>
+                        <td>${displayUserAnswer}</td>
+                        <td>${question.correctAnswer}</td>
+                        <td class="${question.isCorrect ? 'correct-cell' : 'incorrect-cell'}">
+                            ${question.isCorrect ? '<i class="bi bi-check-circle-fill"></i>' : '<i class="bi bi-x-circle-fill"></i>'}
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <div class="student-result-actions">
+                    <button id="print-student-result"><i class="bi bi-printer"></i> Распечатать отчет</button>
+                    <button id="close-student-result"><i class="bi bi-x-circle"></i> Закрыть</button>
+                </div>
+            `;
+            
+            studentResultDetails.innerHTML = html;
+            studentResultDetails.classList.remove('hidden');
+            
+            // Add event listeners for buttons
+            document.getElementById('print-student-result').addEventListener('click', () => {
+                printStudentReport(results);
+            });
+            
+            document.getElementById('close-student-result').addEventListener('click', () => {
+                studentResultDetails.classList.add('hidden');
+            });
+        };
+        
+        // Function to print student report
+        const printStudentReport = (results) => {
+            const totalQuestions = results.totalQuestions || results.questions.length;
+            const correctCount = results.correctCount || results.questions.filter(q => q.isCorrect).length;
+            const percentage = Math.round((correctCount / totalQuestions) * 100);
+            const passThreshold = 70;
+            const passStatus = percentage >= passThreshold ? 'Сдал' : 'Не сдал';
+            
+            // Format date
+            const date = results.timestamp ? new Date(results.timestamp) : new Date();
+            const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+            
+            // Create categories summary
+            const categories = {};
+            results.questions.forEach(q => {
+                const category = q.category || 'Без категории';
+                if (!categories[category]) {
+                    categories[category] = {
+                        total: 0,
+                        correct: 0,
+                        incorrect: 0
+                    };
+                }
+                categories[category].total++;
+                if (q.isCorrect) {
+                    categories[category].correct++;
+                } else {
+                    categories[category].incorrect++;
+                }
+            });
+            
+            let categoriesHtml = '';
+            Object.keys(categories).forEach(category => {
+                const stats = categories[category];
+                const categoryPercentage = Math.round((stats.correct / stats.total) * 100);
+                categoriesHtml += `
+                    <tr>
+                        <td>${category}</td>
+                        <td>${stats.total}</td>
+                        <td class="correct-cell">${stats.correct}</td>
+                        <td class="incorrect-cell">${stats.incorrect}</td>
+                        <td>${categoryPercentage}%</td>
+                    </tr>
+                `;
+            });
+            
+            // Create print window
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Результаты экзамена SAI - ${results.student.name}</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 20px;
+                        }
+                        
+                        h1, h2, h3 {
+                            color: #6200ee;
+                        }
+                        
+                        .report-header {
+                            display: flex;
+                            justify-content: space-between;
+                            margin-bottom: 20px;
+                            padding-bottom: 10px;
+                            border-bottom: 1px solid #ddd;
+                        }
+                        
+                        .student-info {
+                            margin-bottom: 20px;
+                        }
+                        
+                        .score-summary {
+                            background-color: #f5f5f5;
+                            padding: 15px;
+                            border-radius: 5px;
+                            margin-bottom: 20px;
+                        }
+                        
+                        .score-circle {
+                            display: inline-block;
+                            width: 100px;
+                            height: 100px;
+                            border-radius: 50%;
+                            background-color: #f2f2f2;
+                            text-align: center;
+                            line-height: 100px;
+                            font-size: 24px;
+                            font-weight: bold;
+                            margin-bottom: 10px;
+                        }
+                        
+                        .pass {
+                            color: #00a854;
+                        }
+                        
+                        .fail {
+                            color: #cf4d71;
+                        }
+                        
+                        .metadata {
+                            display: flex;
+                            gap: 20px;
+                            margin-bottom: 20px;
+                        }
+                        
+                        .metadata div {
+                            background-color: #f5f5f5;
+                            padding: 10px;
+                            border-radius: 5px;
+                            flex: 1;
+                        }
+                        
+                        .report-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        
+                        .report-table th, .report-table td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                        }
+                        
+                        .report-table th {
+                            background-color: #f2f2f2;
+                        }
+                        
+                        .report-table tr:nth-child(even) {
+                            background-color: rgba(0, 0, 0, 0.05);
+                        }
+                        
+                        .correct-row {
+                            background-color: rgba(0, 168, 84, 0.1) !important;
+                        }
+                        
+                        .incorrect-row {
+                            background-color: rgba(216, 27, 96, 0.1) !important;
+                        }
+                        
+                        .correct-cell {
+                            color: #00a854;
+                        }
+                        
+                        .incorrect-cell {
+                            color: #cf4d71;
+                        }
+                        
+                        .status-required-badge {
+                            background-color: #cf4d71;
+                            color: white;
+                            padding: 2px 6px;
+                            border-radius: 3px;
+                            font-size: 12px;
+                            margin-left: 5px;
+                        }
+                        
+                        .text-answer-display {
+                            max-height: 100px;
+                            overflow-y: auto;
+                            padding: 5px;
+                            border: 1px solid #ddd;
+                            background-color: #f9f9f9;
+                            border-radius: 3px;
+                        }
+                        
+                        .gemini-analysis {
+                            background-color: #f5f5f5;
+                            padding: 15px;
+                            border-radius: 5px;
+                            margin-bottom: 20px;
+                            border-left: 4px solid #6200ee;
+                        }
+                        
+                        .report-footer {
+                            margin-top: 30px;
+                            border-top: 1px solid #ddd;
+                            padding-top: 15px;
+                            font-size: 12px;
+                            color: #777;
+                        }
+                        
+                        @media print {
+                            body {
+                                margin: 0;
+                                padding: 15px;
+                            }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="report-header">
+                        <h1>Результаты экзамена SAI</h1>
+                        <div>
+                            <p>${formattedDate}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="student-info">
+                        <h2>Информация о студенте</h2>
+                        <p><strong>Имя:</strong> ${results.student.name}</p>
+                        <p><strong>ID:</strong> ${results.student.id}</p>
+                    </div>
+                    
+                    <div class="score-summary">
+                        <div class="score-circle ${percentage >= passThreshold ? 'pass' : 'fail'}">
+                            ${percentage}%
+                        </div>
+                        <h3>${correctCount} из ${totalQuestions} правильных ответов</h3>
+                        <h2 class="${percentage >= passThreshold ? 'pass' : 'fail'}">
+                            Результат: ${passStatus}
+                        </h2>
+                    </div>
+                    
+                    <div class="metadata">
+                        <div>
+                            <h3>Детали экзамена</h3>
+                            <p><strong>Общее время:</strong> ${formatTime(results.totalTime || 0)}</p>
+                            <p><strong>Переключений вкладок:</strong> ${results.tabSwitches || 0}</p>
+                        </div>
+                        <div class="gemini-analysis">
+                            <h3>Оценка Gemini AI</h3>
+                            <p><strong>Средний балл:</strong> ${(percentage / 10).toFixed(1)} из 10</p>
+                            <p><strong>Рекомендация:</strong> ${percentage >= passThreshold ? 'Принять' : 'Отклонить'}</p>
+                        </div>
+                    </div>
+                    
+                    <h2>Результаты по категориям</h2>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Категория</th>
+                                <th>Всего вопросов</th>
+                                <th>Правильно</th>
+                                <th>Не правильно</th>
+                                <th>Процент</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${categoriesHtml}
+                        </tbody>
+                    </table>
+                    
+                    <h2>Детальные ответы</h2>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>№</th>
+                                <th>Вопрос</th>
+                                <th>Ответ студента</th>
+                                <th>Правильный ответ</th>
+                                <th>Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `);
+            
+            // Add rows for each question
+            results.questions.forEach((question, index) => {
+                const userAnswer = question.userAnswer || 'Не отвечено';
+                const isTextAnswer = typeof userAnswer === 'string' && userAnswer.length > 100;
+                const displayUserAnswer = isTextAnswer ? 
+                    `<div class="text-answer-display">${userAnswer}</div>` : userAnswer;
+                
+                printWindow.document.write(`
+                    <tr class="${question.isCorrect ? 'correct-row' : 'incorrect-row'}">
+                        <td>${index + 1}</td>
+                        <td>${question.question}${question.status === "Обязательно" ? ' <span class="status-required-badge">Обязательно</span>' : ''}</td>
+                        <td>${displayUserAnswer}</td>
+                        <td>${question.correctAnswer}</td>
+                        <td class="${question.isCorrect ? 'correct-cell' : 'incorrect-cell'}">
+                            ${question.isCorrect ? 'Правильно' : 'Не правильно'}
+                        </td>
+                    </tr>
+                `);
+            });
+            
+            printWindow.document.write(`
+                        </tbody>
+                    </table>
+                    
+                    <div class="report-footer">
+                        <p>Экзамен SAI - Отчет сгенерирован системой</p>
+                    </div>
+                    
+                    <script>
+                        window.onload = function() {
+                            window.print();
+                        }
+                    </script>
+                </body>
+                </html>
+            `);
+        };
+        
+        // Add styles for text answers in student result section
+        const style = document.createElement('style');
+        style.textContent = `
+            .text-answer-display {
+                max-height: 150px;
+                overflow-y: auto;
+                padding: 10px;
+                border: 1px solid var(--border-color);
+                background-color: var(--secondary-bg);
+                border-radius: 5px;
+                white-space: pre-wrap;
+                font-size: 0.9em;
+            }
+            
+            .answers-table td {
+                max-width: 300px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+        `;
+        document.head.appendChild(style);
+    };
+    
+    // Call function to add student result features
+    addStudentResultFeatures();
+
+    // Add styles for student result section, including text answers
+    const styleForStudentResult = document.createElement('style');
+    styleForStudentResult.textContent = `
+        .student-result-container {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .result-header {
+            margin-bottom: 15px;
+        }
+        
+        .result-header h3 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 10px 0;
+            color: var(--text-color);
+        }
+        
+        .result-description {
+            font-size: 0.9em;
+            color: var(--muted-text);
+        }
+        
+        .student-code-input-container {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        
+        #student-code-input {
+            flex: 1;
+            background: var(--secondary-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px 0 0 8px;
+            padding: 10px;
+        }
+        
+        #load-student-code {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 0 8px 8px 0;
+            padding: 0 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        #load-student-code:hover {
+            background: var(--accent-hover);
+        }
+        
+        #student-result-details {
+            background: var(--secondary-bg);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .student-info-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .student-personal-info h3 {
+            margin: 0 0 10px 0;
+            color: var(--text-color);
+            font-size: 1.3rem;
+        }
+        
+        .student-personal-info p {
+            margin: 5px 0;
+            color: var(--muted-text);
+        }
+        
+        .student-score-summary {
+            text-align: center;
+        }
+        
+        .student-score {
+            width: 80px;
+            height: 80px;
+            background-color: var(--card-bg);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .student-score.pass {
+            color: var(--correct-color);
+            border: 2px solid var(--correct-color);
+        }
+        
+        .student-score.fail {
+            color: var(--incorrect-color);
+            border: 2px solid var(--incorrect-color);
+        }
+        
+        .status.pass {
+            color: var(--correct-color);
+        }
+        
+        .status.fail {
+            color: var(--incorrect-color);
+        }
+        
+        .exam-metadata {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 10px 15px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+        }
+        
+        .exam-metadata p {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+        }
+        
+        .gemini-analysis {
+            margin-bottom: 25px;
+            padding: 15px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            border-left: 4px solid var(--accent-color);
+        }
+        
+        .gemini-analysis h4 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 10px 0;
+            color: var(--text-color);
+        }
+        
+        .gemini-analysis p {
+            margin: 5px 0;
+        }
+        
+        .gemini-note {
+            font-size: 0.8rem;
+            color: var(--muted-text);
+            font-style: italic;
+            margin-top: 10px !important;
+        }
+        
+        .answers-header {
+            margin: 20px 0 15px 0;
+            color: var(--text-color);
+        }
+        
+        .answers-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .answers-table th, .answers-table td {
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .answers-table th {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+        
+        .answers-table tr:nth-child(even) {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+        
+        .correct-row {
+            background-color: rgba(0, 168, 84, 0.1) !important;
+        }
+        
+        .incorrect-row {
+            background-color: rgba(216, 27, 96, 0.1) !important;
+        }
+        
+        .correct-cell {
+            color: var(--correct-color);
+        }
+        
+        .incorrect-cell {
+            color: var(--incorrect-color);
+        }
+        
+        .status-required-badge {
+            background-color: var(--required-color);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        
+        .text-answer-display {
+            max-height: 150px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            background-color: var(--secondary-bg);
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+        }
+        
+        .answers-table td {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .student-result-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .student-result-actions button {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .student-result-actions button:hover {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+        
+        @media (max-width: 768px) {
+            .student-info-header, .exam-metadata {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            
+            .student-score-summary {
+                align-self: center;
+            }
+            
+            .answers-table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+    `;
+    document.head.appendChild(styleForStudentResult);
 });
