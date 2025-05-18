@@ -1,0 +1,22 @@
+--- a/index.html
++++ b/index.html
+@@ -115,14 +115,6 @@
+                     </button>
+                 </div>
+             </div>
+-            
+-            <!-- Add question count indicator -->
+-            <div class="question-count-indicator">
+-                <span>Вопрос <span id="current-question-number">1</span> из <span id="total-question-count">80</span></span>
+-                <div class="progress-info">Используются все 80 вопросов из базы данных</div>
+-            </div>
+         </div>
+-
+         <div id="results-screen" class="hidden">
+             <h1>РЕЗУЛЬТАТЫ ЭКЗАМЕНА</h1>
+             <div class="results-summary">
+@@ -199,3 +191,4 @@
+     <script src="script.js"></script>
+ </body>
+ </html> 
++
